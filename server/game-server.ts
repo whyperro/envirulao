@@ -12,7 +12,8 @@ interface Room {
   state: GameState;
 }
 
-const PORT = Number(process.env.GAME_SERVER_PORT || 4000);
+// En Render te dan PORT, en local puedes usar GAME_SERVER_PORT o 4000
+const PORT = Number(process.env.PORT || process.env.GAME_SERVER_PORT || 4000);
 
 // Mapa de salas en memoria
 const rooms = new Map<RoomId, Room>();
@@ -22,8 +23,6 @@ function getRoom(roomId: RoomId): Room | undefined {
 }
 
 function createRoomWithFirstPlayer(roomId: RoomId, playerName: string): Room {
-  // Usamos directamente tu lógica de creación de partida:
-  // reparte mazo, manos iniciales, etc, para el primer jugador
   const state = createInitialGame([playerName]);
   const room: Room = { id: roomId, state };
   rooms.set(roomId, room);
@@ -34,9 +33,15 @@ function createRoomWithFirstPlayer(roomId: RoomId, playerName: string): Room {
 }
 
 const httpServer = createServer();
+
+const allowedOrigins =
+  process.env.CORS_ORIGIN?.split(",").map((s) => s.trim()) ??
+  ["http://localhost:3000"];
+
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // en dev/LAN está bien, luego puedes restringir
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
   },
 });
 
@@ -47,7 +52,6 @@ io.on("connection", (socket: Socket) => {
   socket.on(
     "joinRoom",
     (roomIdRaw: RoomId | null, playerName: string) => {
-      // Si front manda null/undefined, usamos sala por defecto
       const roomId: RoomId = roomIdRaw || "default-room";
 
       console.log(
@@ -57,10 +61,8 @@ io.on("connection", (socket: Socket) => {
       let room = getRoom(roomId);
 
       if (!room) {
-        // Primer jugador de la sala → creamos partida con él
         room = createRoomWithFirstPlayer(roomId, playerName);
       } else {
-        // Sala ya existe → añadimos jugador vía engine
         const joinAction: GameAction = {
           type: "JOIN",
           playerName,
@@ -69,40 +71,41 @@ io.on("connection", (socket: Socket) => {
       }
 
       socket.join(roomId);
-
-      // Enviar estado actualizado a todos en la sala
       io.to(roomId).emit("stateUpdate", room.state);
     }
   );
 
   // Acciones de juego
-  socket.on("action", (roomIdRaw: RoomId | null, action: GameAction) => {
-    const roomId: RoomId = roomIdRaw || "default-room";
-    const room = getRoom(roomId);
+  socket.on(
+    "action",
+    (roomIdRaw: RoomId | null, action: GameAction) => {
+      const roomId: RoomId = roomIdRaw || "default-room";
+      const room = getRoom(roomId);
 
-    if (!room) {
-      console.warn(
-        `[action] Sala ${roomId} no existe aún. Ignorando acción ${action.type}.`
+      if (!room) {
+        console.warn(
+          `[action] Sala ${roomId} no existe aún. Ignorando acción ${action.type}.`
+        );
+        return;
+      }
+
+      console.log(
+        `[action] room=${roomId} type=${action.type}`
       );
-      return;
+
+      room.state = applyAction(room.state, action);
+      io.to(roomId).emit("stateUpdate", room.state);
     }
-
-    console.log(
-      `[action] room=${roomId} type=${action.type}`
-    );
-
-    room.state = applyAction(room.state, action);
-    io.to(roomId).emit("stateUpdate", room.state);
-  });
+  );
 
   socket.on("disconnect", () => {
     console.log(`[socket] desconectado: ${socket.id}`);
-    // Aquí podrías hacer limpieza de jugadores/salas si quisieras
+    // Aquí podrías limpiar salas/jugadores si lo necesitas
   });
 });
 
 httpServer.listen(PORT, () => {
   console.log(
-    `[server] Game server escuchando en http://localhost:${PORT}`
+    `[server] Game server escuchando en puerto ${PORT}`
   );
 });
