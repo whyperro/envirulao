@@ -3,12 +3,13 @@
 
 import { Button } from "@/components/ui/button";
 import { useMultiplayerGame } from "@/lib/game/MultiplayerGameContext";
+import { TreatmentCard } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import React, { useState } from "react";
 import { HandView } from "./hand-view";
 import { PlayerPanel } from "./player-panel";
-import { TreatmentCard } from "@/lib/game/types";
 
 /* ────────────────────────────────────────────────────────────── */
 /*  Chips de jugadores en la parte superior                      */
@@ -50,7 +51,7 @@ const PlayerChip: React.FC<{
         {name.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex flex-col">
-        <span className="text-xs font-semibold text-slate-100 truncate max-w-[7rem]">
+        <span className="text-xs font-semibold text-slate-100 truncate max-w-28">
           {name}
         </span>
         <span className="text-[10px] text-slate-400">
@@ -77,13 +78,12 @@ const PlayerChip: React.FC<{
 /*  GameBoard principal                                          */
 /* ────────────────────────────────────────────────────────────── */
 
-type FxType = "virus" | "medicine" | "organLost" | null;
 export const GameBoard: React.FC = () => {
-  const { state, currentPlayer, reset, playCard, roomId, playerId, lastFx } =
+  const { state, currentPlayer, reset, playCard, roomId, playerId, lastFx, leaveRoom, closeRoom, roomClosed} =
     useMultiplayerGame();
     const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
     const [selectedSourceOrganId, setSelectedSourceOrganId] = useState<string | null>(null);
-
+    const router = useRouter();
   // Jugador local ("yo")
   const me =
     playerId != null
@@ -189,6 +189,19 @@ export const GameBoard: React.FC = () => {
     clearSelection();
   };
 
+    if (roomClosed) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 gap-3">
+        <p className="text-sm">
+          Esta mesa ha sido cerrada.
+        </p>
+        <Button onClick={() => router.push("/")}>
+          Volver al inicio
+        </Button>
+      </div>
+    );
+}
+
   const lastEvents = [...(state.log ?? [])].slice(-14).reverse();
 
   return (
@@ -231,6 +244,28 @@ export const GameBoard: React.FC = () => {
             <Button variant="outline" size="sm" onClick={reset} className="text-white bg-red-200` `1  ">
               Reiniciar
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                leaveRoom();
+                router.push("/"); // o la ruta que quieras al salir
+              }}
+            >
+              Salir
+            </Button>
+
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                closeRoom();
+                router.push("/"); // o /salas, /, etc.
+              }}
+            >
+              Cerrar mesa
+            </Button>
+
           </div>
         </div>
 

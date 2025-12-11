@@ -28,6 +28,9 @@ interface MultiplayerContextValue {
   roomId: string;
   playerId: string | null;
   lastFx: FxType;
+  leaveRoom: () => void;
+  roomClosed: boolean;
+  closeRoom: () => void;
 }
 
 const MultiplayerGameContext =
@@ -59,6 +62,7 @@ export const MultiplayerGameProvider: React.FC<Props> = ({
   const socketRef = useRef<Socket | null>(null);
   const [state, setState] = useState<GameState | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [roomClosed, setRoomClosed] = useState(false);
 
   // FX local para este cliente
   const [lastFx, setLastFx] = useState<FxType>(null);
@@ -69,7 +73,6 @@ export const MultiplayerGameProvider: React.FC<Props> = ({
   useEffect(() => {
     const s = io(serverUrl);
     socketRef.current = s;
-
     s.on("connect", () => {
       // Unirse a la sala con nuestro nombre
       s.emit("joinRoom", roomId, playerName);
@@ -145,11 +148,16 @@ export const MultiplayerGameProvider: React.FC<Props> = ({
       });
     });
 
+    s.on("roomClosed", () => {
+      setRoomClosed(true);
+    });
+
     return () => {
       if (fxTimeoutRef.current) {
         clearTimeout(fxTimeoutRef.current);
       }
       prevStateRef.current = null;
+      s.off("roomClosed");
       s.disconnect();
       socketRef.current = null;
     };
@@ -165,6 +173,20 @@ export const MultiplayerGameProvider: React.FC<Props> = ({
     const socket = socketRef.current;
     if (!socket) return;
     socket.emit("action", roomId, action);
+  };
+
+  const leaveRoom = () => {
+  const socket = socketRef.current;
+  if (!socket) return;
+  socket.emit("leaveRoom", roomId);
+  socket.disconnect();
+};
+
+  const closeRoom = () => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.emit("closeRoom", roomId);
+    socket.disconnect();
   };
 
   const playCard = (
@@ -234,6 +256,9 @@ export const MultiplayerGameProvider: React.FC<Props> = ({
     roomId,
     playerId,
     lastFx,
+    leaveRoom,
+    roomClosed,
+    closeRoom,
   };
 
   return (

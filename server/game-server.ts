@@ -12,7 +12,7 @@ interface Room {
   state: GameState;
 }
 
-// En Render te dan PORT, en local puedes usar GAME_SERVER_PORT o 4000
+// Render usa PORT, local puedes usar GAME_SERVER_PORT
 const PORT = Number(process.env.PORT || process.env.GAME_SERVER_PORT || 4000);
 
 // Mapa de salas en memoria
@@ -20,6 +20,14 @@ const rooms = new Map<RoomId, Room>();
 
 function getRoom(roomId: RoomId): Room | undefined {
   return rooms.get(roomId);
+}
+
+function deleteRoomIfEmpty(io: Server, roomId: RoomId) {
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  if (!socketsInRoom || socketsInRoom.size === 0) {
+    rooms.delete(roomId);
+    console.log(`[room] sala "${roomId}" eliminada (sin jugadores)`);
+  }
 }
 
 function createRoomWithFirstPlayer(roomId: RoomId, playerName: string): Room {
@@ -61,8 +69,10 @@ io.on("connection", (socket: Socket) => {
       let room = getRoom(roomId);
 
       if (!room) {
+        // Primer jugador de la sala
         room = createRoomWithFirstPlayer(roomId, playerName);
       } else {
+        // Añadimos jugador vía engine
         const joinAction: GameAction = {
           type: "JOIN",
           playerName,
@@ -71,6 +81,10 @@ io.on("connection", (socket: Socket) => {
       }
 
       socket.join(roomId);
+      // Opcional: guardar en socket para facilitar logs/limpieza
+      socket.data.roomId = roomId;
+      socket.data.playerName = playerName;
+
       io.to(roomId).emit("stateUpdate", room.state);
     }
   );
@@ -89,18 +103,56 @@ io.on("connection", (socket: Socket) => {
         return;
       }
 
-      console.log(
-        `[action] room=${roomId} type=${action.type}`
-      );
+      console.log(`[action] room=${roomId} type=${action.type}`);
 
       room.state = applyAction(room.state, action);
       io.to(roomId).emit("stateUpdate", room.state);
     }
   );
 
+  // Salir voluntariamente de la sala
+  socket.on("leaveRoom", (roomIdRaw: RoomId | null) => {
+    const roomId: RoomId =
+      roomIdRaw || (socket.data.roomId as RoomId) || "default-room";
+
+    console.log(
+      `[leaveRoom] socket=${socket.id} abandona room=${roomId}`
+    );
+
+    socket.leave(roomId);
+    deleteRoomIfEmpty(io, roomId);
+  });
+
+  // Cerrar sala: echa a todos y limpia memoria
+  socket.on("closeRoom", (roomIdRaw: RoomId | null) => {
+    const roomId: RoomId =
+      roomIdRaw || (socket.data.roomId as RoomId) || "default-room";
+
+    if (!rooms.has(roomId)) {
+      console.warn(`[closeRoom] sala ${roomId} no existe`);
+      return;
+    }
+
+    console.log(
+      `[closeRoom] sala "${roomId}" cerrada por socket=${socket.id}`
+    );
+
+    // Avisamos al front (por si quiere mostrar mensaje)
+    io.to(roomId).emit("roomClosed");
+
+    // Sacamos a todos los sockets de la sala y los desconectamos
+    io.in(roomId).disconnectSockets(true);
+
+    // Eliminamos sala del mapa
+    rooms.delete(roomId);
+  });
+
   socket.on("disconnect", () => {
     console.log(`[socket] desconectado: ${socket.id}`);
-    // Aquí podrías limpiar salas/jugadores si lo necesitas
+    const roomId = socket.data.roomId as RoomId | undefined;
+    if (roomId) {
+      deleteRoomIfEmpty(io, roomId);
+    }
   });
 });
 
