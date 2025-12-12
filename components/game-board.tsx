@@ -196,7 +196,7 @@ export const GameBoard: React.FC = () => {
           Esta mesa ha sido cerrada.
         </p>
         <Button onClick={() => router.push("/")}>
-          Volver al inicio
+          Volver al inicio!
         </Button>
       </div>
     );
