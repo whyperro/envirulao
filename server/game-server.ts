@@ -92,7 +92,12 @@ function handlePlayerLeave(socket: Socket) {
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: [
+      "https://envirulao.vercel.app",
+      "http://localhost:3000",
+    ],
+    methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
@@ -223,8 +228,8 @@ io.on("connection", (socket: Socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `[server] Game server escuchando en http://localhost:${PORT}`
+    `[server] Game server escuchando en http://0.0.0.0:${PORT}`
   );
 });
